@@ -1,30 +1,57 @@
 #import training data
 train <- read.csv(file.choose(), header = T)
 
-#Sampling
-ind <- sample(2, nrow(train), replace = T, prob = c(0.80, 0.2))
-train_sample <- train[ind==1,-c(1,32)]
-test_sample <- train[ind==2,-c(1,32)]
+library('RANN')
+library('caret')
+library('mlbench')
+library('caretEnsemble')
+#separating weights and label
+train_label <- train$Label
+weights <- train$Weight
+data <- train[,-c(1,32)]
 
-#Packages
-install.packages("naivebayes")
-library(naivebayes)
-install.packages("dplyr")
-library(dplyr)
-install.packages("ggplot2")
-library(ggplot2)
-install.packages("psych")
-library(psych)
+# Example of Boosting Algorithms
+control <- trainControl(method="repeatedcv", number=10, repeats=3)
+seed <- 7
+metric <- "Accuracy"
+# C5.0
+set.seed(seed)
+fit.c50 <- train(Class~., data=dataset, method="C5.0", metric=metric, trControl=control)
+# Stochastic Gradient Boosting
+set.seed(seed)
+fit.gbm <- train(Class~., data=dataset, method="gbm", metric=metric, trControl=control, verbose=FALSE)
+# summarize results
+boosting_results <- resamples(list(c5.0=fit.c50, gbm=fit.gbm))
+summary(boosting_results)
+dotplot(boosting_results)
 
-#naive Bayes: based on bayes theorum
-model_naive <- naive_bayes(dtrain$Label~., data = dtrain)
-model_naive
+# Example of Bagging algorithms
+control <- trainControl(method="repeatedcv", number=10, repeats=3)
+seed <- 7
+metric <- "Accuracy"
+# Bagged CART
+set.seed(seed)
+fit.treebag <- train(Class~., data=dataset, method="treebag", metric=metric, trControl=control)
+# Random Forest
+set.seed(seed)
+fit.rf <- train(Class~., data=dataset, method="rf", metric=metric, trControl=control)
+# summarize results
+bagging_results <- resamples(list(treebag=fit.treebag, rf=fit.rf))
+summary(bagging_results)
+dotplot(bagging_results)
 
-library(caret)
-library(RCurl)
-lab <- 'Label'
-predictors <- names(dtrain)[names(dtrain) != lab]
-dtrain$Label <- as.factor(dtrain$Label)
-myControl <- trainControl(method='cv', number=3, returnResamp='none')
-model_gbm <- train(dtrain[,predictors], dtrain[,lab],
-                    method='gbm', trControl=myControl)
+# Example of Stacking algorithms
+# create submodels
+control <- trainControl(method="repeatedcv", number=10, repeats=3, savePredictions=TRUE, classProbs=TRUE)
+algorithmList <- c('lda', 'rpart', 'glm', 'knn', 'svmRadial')
+set.seed(seed)
+models <- caretList(Class~., data=dataset, trControl=control, methodList=algorithmList)
+results <- resamples(models)
+summary(results)
+dotplot(results)
+
+# stack using glm
+stackControl <- trainControl(method="repeatedcv", number=10, repeats=3, savePredictions=TRUE, classProbs=TRUE)
+set.seed(seed)
+stack.glm <- caretStack(models, method="glm", metric="Accuracy", trControl=stackControl)
+print(stack.glm)
